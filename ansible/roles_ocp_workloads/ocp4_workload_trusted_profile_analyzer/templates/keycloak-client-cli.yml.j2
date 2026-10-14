@@ -1,0 +1,39 @@
+---
+apiVersion: keycloak.org/v1alpha1
+kind: KeycloakClient
+metadata:
+  name: tpa-cli
+  namespace: "{{ ocp4_workload_trusted_profile_analyzer_keycloak_namespace }}"
+  labels:
+    app: "{{ ocp4_workload_trusted_profile_analyzer_keycloak_realm_label }}"
+spec:
+  realmSelector:
+    matchLabels:
+      app: "{{ ocp4_workload_trusted_profile_analyzer_keycloak_realm_label }}"
+  client:
+    clientId: "{{ ocp4_workload_trusted_profile_analyzer_oidc_cli_client_id }}"
+    name: Trusted Profile Analyzer CLI
+    enabled: true
+    publicClient: false
+    secret: "{{ ocp4_workload_trusted_profile_analyzer_cli_client_secret }}"
+    standardFlowEnabled: true
+    implicitFlowEnabled: false
+    directAccessGrantsEnabled: true
+    serviceAccountsEnabled: true
+    fullScopeAllowed: true
+    redirectUris:
+    - "http://localhost/*"
+    - "http://127.0.0.1/*"
+    webOrigins:
+    - "*"
+    defaultClientScopes:
+    - profile
+    - email
+    - roles
+    - web-origins
+    - read:document
+    - create:document
+    - update:document
+    - delete:document
+    attributes:
+      access.token.lifespan: "300"

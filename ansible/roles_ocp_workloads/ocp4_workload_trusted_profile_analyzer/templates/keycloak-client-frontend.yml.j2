@@ -1,0 +1,38 @@
+---
+apiVersion: keycloak.org/v1alpha1
+kind: KeycloakClient
+metadata:
+  name: tpa-frontend
+  namespace: "{{ ocp4_workload_trusted_profile_analyzer_keycloak_namespace }}"
+  labels:
+    app: "{{ ocp4_workload_trusted_profile_analyzer_keycloak_realm_label }}"
+spec:
+  realmSelector:
+    matchLabels:
+      app: "{{ ocp4_workload_trusted_profile_analyzer_keycloak_realm_label }}"
+  client:
+    clientId: "{{ ocp4_workload_trusted_profile_analyzer_oidc_frontend_client_id }}"
+    name: Trusted Profile Analyzer Frontend
+    enabled: true
+    publicClient: true
+    standardFlowEnabled: true
+    implicitFlowEnabled: true
+    directAccessGrantsEnabled: false
+    serviceAccountsEnabled: false
+    fullScopeAllowed: true
+    redirectUris:
+    - "https://server-{{ ocp4_workload_trusted_profile_analyzer_namespace }}.{{ ocp4_workload_trusted_profile_analyzer_ingress_domain }}/*"
+    - "https://server-{{ ocp4_workload_trusted_profile_analyzer_namespace }}.{{ ocp4_workload_trusted_profile_analyzer_ingress_domain }}"
+    webOrigins:
+    - "*"
+    defaultClientScopes:
+    - profile
+    - email
+    - roles
+    - web-origins
+    - read:document
+    - create:document
+    - update:document
+    - delete:document
+    attributes:
+      post.logout.redirect.uris: "+"

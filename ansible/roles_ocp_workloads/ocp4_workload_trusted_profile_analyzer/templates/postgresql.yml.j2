@@ -1,0 +1,110 @@
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgresql-admin-credentials
+  namespace: "{{ ocp4_workload_trusted_profile_analyzer_namespace }}"
+type: Opaque
+stringData:
+  db.name: postgres
+  db.user: postgres
+  db.password: "{{ ocp4_workload_trusted_profile_analyzer_postgres_password }}"
+---
+apiVersion: v1
+kind: Secret
+metadata:
+  name: postgresql-credentials
+  namespace: "{{ ocp4_workload_trusted_profile_analyzer_namespace }}"
+type: Opaque
+stringData:
+  db.host: "{{ ocp4_workload_trusted_profile_analyzer_postgres_service_name }}"
+  db.port: "5432"
+  db.name: "{{ ocp4_workload_trusted_profile_analyzer_postgres_tpa_database }}"
+  db.user: "{{ ocp4_workload_trusted_profile_analyzer_postgres_tpa_user }}"
+  db.password: "{{ ocp4_workload_trusted_profile_analyzer_postgres_tpa_password }}"
+---
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: tpa-postgresql
+  namespace: "{{ ocp4_workload_trusted_profile_analyzer_namespace }}"
+spec:
+  accessModes:
+  - ReadWriteOnce
+  resources:
+    requests:
+      storage: "{{ ocp4_workload_trusted_profile_analyzer_helm_postgresql_size }}"
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: tpa-postgresql
+  namespace: "{{ ocp4_workload_trusted_profile_analyzer_namespace }}"
+  labels:
+    app: tpa-postgresql
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: tpa-postgresql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: tpa-postgresql
+    spec:
+      containers:
+      - name: postgresql
+        image: "{{ ocp4_workload_trusted_profile_analyzer_pgsql_image }}"
+        env:
+        - name: POSTGRES_USER
+          value: postgres
+        - name: POSTGRES_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: postgresql-admin-credentials
+              key: db.password
+        - name: PGDATA
+          value: /var/lib/postgresql/data/pgdata
+        ports:
+        - name: postgresql
+          containerPort: 5432
+        volumeMounts:
+        - name: data
+          mountPath: /var/lib/postgresql/data
+        readinessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - postgres
+          initialDelaySeconds: 10
+          periodSeconds: 10
+        livenessProbe:
+          exec:
+            command:
+            - pg_isready
+            - -U
+            - postgres
+          initialDelaySeconds: 30
+          periodSeconds: 20
+      volumes:
+      - name: data
+        persistentVolumeClaim:
+          claimName: tpa-postgresql
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: "{{ ocp4_workload_trusted_profile_analyzer_postgres_service_name }}"
+  namespace: "{{ ocp4_workload_trusted_profile_analyzer_namespace }}"
+  labels:
+    app: tpa-postgresql
+spec:
+  selector:
+    app: tpa-postgresql
+  ports:
+  - name: postgresql
+    port: 5432
+    targetPort: 5432

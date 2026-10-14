@@ -3,4 +3,54 @@ become_override: no
 ocp_username: system:admin
 silent: False
 
-auth_remove_kubeadmin: true
+auth_remove_kubeadmin: false
+
+# =============================================================================
+# SKIP AWS bastion discovery + Route53 private DNS for IdM
+# (set true only if you have a bastion and want the private zone A record)
+# =============================================================================
+ocp4_workload_idm_configure_route53_dns: false
+
+# =============================================================================
+# Certificates: SKIP Route53 DNS-01 / certbot / Let's Encrypt
+# -----------------------------------------------------------------------------
+# ocp4_workload_idm_use_letsencrypt: false  => do NOT run:
+#   - host-lets-encrypt-certs-certbot
+#   - Route53 DNS-01 validation
+#   - Let's Encrypt CA install (DSTRootCAX3 / LEAuthX3)
+#   - LE renewal cron / redeploy hooks
+#
+# You MUST supply TLS material below (OpenShift Secret or local files).
+# The certificate SAN must include idm_dns_name.
+# =============================================================================
+ocp4_workload_idm_use_letsencrypt: false
+
+# How to supply certificates when Let's Encrypt is skipped:
+#   ocp_secret  - read from an OpenShift TLS Secret (recommended)
+#   files       - copy from paths on the Ansible controller / host
+ocp4_workload_idm_cert_source: ocp_secret
+
+# Staging directory on the IdM host used by ipa-server-certinstall
+ocp4_workload_idm_cert_dir: "/home/{{ ansible_user }}/idm/certificates"
+
+# -----------------------------------------------------------------------------
+# REQUIRED when cert_source=ocp_secret — fill in these placeholders
+# -----------------------------------------------------------------------------
+# Namespace of the TLS Secret in the OpenShift cluster
+ocp4_workload_idm_ocp_cert_secret_namespace: "openshift-ingress"   # e.g. openshift-ingress
+
+# Name of the TLS Secret that holds the IdM server certificate
+ocp4_workload_idm_ocp_cert_secret_name: "apps-cert"             # e.g. idm-tls
+
+# Keys inside that Secret (standard kubernetes.io/tls names shown)
+ocp4_workload_idm_ocp_cert_secret_tls_crt_key: tls.crt                         # cert + chain (fullchain)
+ocp4_workload_idm_ocp_cert_secret_tls_key_key: tls.key                         # private key
+ocp4_workload_idm_ocp_cert_secret_ca_key: ca.crt                               # optional CA; set "" if absent
+
+# -----------------------------------------------------------------------------
+# REQUIRED when cert_source=files — fill in these placeholders instead
+# -----------------------------------------------------------------------------
+ocp4_workload_idm_tls_key_src: "REPLACE_WITH_PATH_TO_PRIVKEY_PEM"              # e.g. /home/lab/idm/privkey.pem
+ocp4_workload_idm_tls_fullchain_src: "REPLACE_WITH_PATH_TO_FULLCHAIN_PEM"      # e.g. /home/lab/idm/fullchain.pem
+ocp4_workload_idm_ca_bundle_src: ""                                           # optional CA pem; "" to skip
+ocp4_workload_idm_ca_nickname: custom-ca                                      # nickname used by ipa-cacert-manage

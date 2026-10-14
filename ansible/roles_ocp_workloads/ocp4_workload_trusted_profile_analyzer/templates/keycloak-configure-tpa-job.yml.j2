@@ -1,0 +1,133 @@
+---
+apiVersion: batch/v1
+kind: Job
+metadata:
+  name: tpa-configure-keycloak
+  namespace: "{{ ocp4_workload_trusted_profile_analyzer_keycloak_namespace }}"
+  labels:
+    app: trusted-profile-analyzer
+spec:
+  backoffLimit: 6
+  ttlSecondsAfterFinished: 600
+  template:
+    metadata:
+      labels:
+        app: trusted-profile-analyzer
+        job: tpa-configure-keycloak
+    spec:
+      restartPolicy: OnFailure
+      containers:
+      - name: kcadm
+        image: "{{ ocp4_workload_trusted_profile_analyzer_keycloak_kcadm_image }}"
+        env:
+        - name: KEYCLOAK_URL
+          value: "{{ ocp4_workload_trusted_profile_analyzer_keycloak_internal_url }}"
+        - name: REALM
+          value: "{{ ocp4_workload_trusted_profile_analyzer_keycloak_realm }}"
+        - name: TPA_USER
+          value: "{{ ocp4_workload_trusted_profile_analyzer_keycloak_user }}"
+        - name: ROLE_USER
+          value: "{{ ocp4_workload_trusted_profile_analyzer_keycloak_role_user }}"
+        - name: ROLE_MANAGER
+          value: "{{ ocp4_workload_trusted_profile_analyzer_keycloak_role_manager }}"
+        - name: ROLE_ADMIN
+          value: "{{ ocp4_workload_trusted_profile_analyzer_keycloak_role_admin }}"
+        - name: FRONTEND_CLIENT_ID
+          value: "{{ ocp4_workload_trusted_profile_analyzer_oidc_frontend_client_id }}"
+        - name: CLI_CLIENT_ID
+          value: "{{ ocp4_workload_trusted_profile_analyzer_oidc_cli_client_id }}"
+        - name: KEYCLOAK_ADMIN
+          valueFrom:
+            secretKeyRef:
+              name: "{{ ocp4_workload_trusted_profile_analyzer_keycloak_admin_secret }}"
+              key: "{{ ocp4_workload_trusted_profile_analyzer_keycloak_admin_secret_user_key }}"
+        - name: KEYCLOAK_ADMIN_PASSWORD
+          valueFrom:
+            secretKeyRef:
+              name: "{{ ocp4_workload_trusted_profile_analyzer_keycloak_admin_secret }}"
+              key: "{{ ocp4_workload_trusted_profile_analyzer_keycloak_admin_secret_password_key }}"
+        - name: KCADM_PATH
+          value: "{{ ocp4_workload_trusted_profile_analyzer_keycloak_kcadm_path }}"
+        command:
+        - /bin/bash
+        - -exc
+        - |
+          kcadm() { "$KCADM_PATH" "$@" --config /tmp/kcadm.config; }
+
+          echo "Waiting for Keycloak at ${KEYCLOAK_URL}..."
+          until kcadm config credentials --server "${KEYCLOAK_URL}" --realm master \
+            --user "${KEYCLOAK_ADMIN}" --password "${KEYCLOAK_ADMIN_PASSWORD}"; do
+            sleep 5
+          done
+          echo "Keycloak admin login succeeded"
+
+          # Realm roles used to gate TPA write scopes in Keycloak
+          for role in "${ROLE_USER}" "${ROLE_MANAGER}" "${ROLE_ADMIN}"; do
+            kcadm create roles -r "${REALM}" -s "name=${role}" || true
+          done
+
+          MANAGER_ID=$(kcadm get roles -r "${REALM}" --fields id,name --format csv --noquotes \
+            | grep ",${ROLE_MANAGER}$" | awk -F ',' '{print $1}')
+          if [[ -z "${MANAGER_ID}" ]]; then
+            echo "Failed to resolve ${ROLE_MANAGER} role id" >&2
+            exit 1
+          fi
+
+          # Required OIDC client scopes for TPA 3.x permissions.
+          # Use JSON body: kcadm -s name=read:document fails (colon) with HTTP 400.
+          for scope in read:document create:document update:document delete:document; do
+            kcadm create client-scopes -r "${REALM}" -b "{
+              \"name\": \"${scope}\",
+              \"protocol\": \"openid-connect\",
+              \"attributes\": {
+                \"include.in.token.scope\": \"true\",
+                \"display.on.consent.screen\": \"false\"
+              }
+            }" || true
+          done
+
+          # Restrict write scopes to the manager role
+          for scope in create:document update:document delete:document; do
+            SCOPE_ID=$(kcadm get client-scopes -r "${REALM}" --fields id,name --format csv --noquotes \
+              | grep ",${scope}$" | awk -F ',' '{print $1}')
+            if [[ -n "${SCOPE_ID}" ]]; then
+              kcadm create "client-scopes/${SCOPE_ID}/scope-mappings/realm" -r "${REALM}" \
+                -b "[{\"name\":\"${ROLE_MANAGER}\",\"id\":\"${MANAGER_ID}\"}]" || true
+            fi
+          done
+
+          # Wait for TPA clients to sync from KeycloakClient CRs, then attach scopes
+          for client_id in "${FRONTEND_CLIENT_ID}" "${CLI_CLIENT_ID}"; do
+            CLIENT_UUID=""
+            for _ in $(seq 1 60); do
+              CLIENT_UUID=$(kcadm get clients -r "${REALM}" --query exact=true \
+                --query "clientId=${client_id}" --fields id --format csv --noquotes || true)
+              if [[ -n "${CLIENT_UUID}" && "${CLIENT_UUID}" != "[]" ]]; then
+                break
+              fi
+              echo "Waiting for client ${client_id} to appear in realm ${REALM}..."
+              sleep 5
+            done
+            if [[ -z "${CLIENT_UUID}" || "${CLIENT_UUID}" == "[]" ]]; then
+              echo "Client ${client_id} was not found in realm ${REALM}" >&2
+              exit 1
+            fi
+            for scope in read:document create:document update:document delete:document; do
+              SCOPE_ID=$(kcadm get client-scopes -r "${REALM}" --fields id,name --format csv --noquotes \
+                | grep ",${scope}$" | awk -F ',' '{print $1}')
+              if [[ -n "${SCOPE_ID}" ]]; then
+                kcadm update "clients/${CLIENT_UUID}/default-client-scopes/${SCOPE_ID}" -r "${REALM}" || true
+              fi
+            done
+          done
+
+          # Assign TPA manager/admin roles to the existing user
+          if ! kcadm get users -r "${REALM}" --query exact=true --query "username=${TPA_USER}" \
+            --fields id --format csv --noquotes | grep -Eq '[a-zA-Z0-9-]'; then
+            echo "User '${TPA_USER}' was not found in realm '${REALM}'" >&2
+            exit 1
+          fi
+          kcadm add-roles -r "${REALM}" --uusername "${TPA_USER}" --rolename "${ROLE_MANAGER}"
+          kcadm add-roles -r "${REALM}" --uusername "${TPA_USER}" --rolename "${ROLE_ADMIN}"
+          echo "Assigned ${ROLE_MANAGER} and ${ROLE_ADMIN} to user ${TPA_USER}"
+          echo "TPA Keycloak configuration complete"

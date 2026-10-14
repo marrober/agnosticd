@@ -5,41 +5,83 @@ silent: false
 
 ocp4_workload_trusted_profile_analyzer_namespace: trusted-profile-analyzer
 
+# Existing Keycloak / RH-SSO instance (do not deploy Keycloak with this role)
+ocp4_workload_trusted_profile_analyzer_keycloak_namespace: keycloak-system
+# Actual Keycloak realm name on this cluster
+ocp4_workload_trusted_profile_analyzer_keycloak_realm: openshift
+# RH-SSO 7.x uses /auth; upstream Keycloak 17+ typically uses ""
+ocp4_workload_trusted_profile_analyzer_keycloak_base_path: /auth
+
+# ---------------------------------------------------------------------------
+# FILL IN before running (MinIO + existing Keycloak Helm path)
+# ---------------------------------------------------------------------------
+# Full OIDC issuer URL for your Keycloak realm
+ocp4_workload_trusted_profile_analyzer_oidc_issuer_url: "https://keycloak-keycloak-system.apps.ocp4.mr-openshift.co.uk/auth/realms/openshift"
+
+# Used only when oidc_issuer_url is empty.
+# When empty, defaults to keycloak-<keycloak_namespace>.<cluster ingress domain>
+ocp4_workload_trusted_profile_analyzer_keycloak_host: ""
+
+# Admin URL used by the kcadm Job.
+# Prefer the public Route (trusted TLS). In-cluster https://keycloak...:8443/auth
+# fails kcadm with PKIX unless a custom truststore is configured.
+ocp4_workload_trusted_profile_analyzer_keycloak_internal_url: "https://keycloak-keycloak-system.apps.ocp4.mr-openshift.co.uk/auth"
+# Admin credentials Secret in the Keycloak namespace (RH-SSO operator default shown)
+ocp4_workload_trusted_profile_analyzer_keycloak_admin_secret: credential-sso
+ocp4_workload_trusted_profile_analyzer_keycloak_admin_secret_user_key: ADMIN_USERNAME
+ocp4_workload_trusted_profile_analyzer_keycloak_admin_secret_password_key: ADMIN_PASSWORD
+ocp4_workload_trusted_profile_analyzer_keycloak_kcadm_image: docker.io/bitnamilegacy/keycloak:23
+ocp4_workload_trusted_profile_analyzer_keycloak_kcadm_path: /opt/bitnami/keycloak/bin/kcadm.sh
+
+# Existing Keycloak local user that receives tpa-manager / tpa-admin roles
+ocp4_workload_trusted_profile_analyzer_keycloak_user: mark
+# Realm roles created in Keycloak (Trustification historically used chicken-*; tpa-* is clearer)
+ocp4_workload_trusted_profile_analyzer_keycloak_role_user: tpa-user
+ocp4_workload_trusted_profile_analyzer_keycloak_role_manager: tpa-manager
+ocp4_workload_trusted_profile_analyzer_keycloak_role_admin: tpa-admin
+
+# RHTPA 3.x OIDC clients (frontend = UI public client, cli = confidential)
+ocp4_workload_trusted_profile_analyzer_oidc_frontend_client_id: frontend
+ocp4_workload_trusted_profile_analyzer_oidc_cli_client_id: cli
+ocp4_workload_trusted_profile_analyzer_cli_client_secret: 5460cc91-4e20-4edd-881c-b15b169f8a79
+
+# Create TPA OIDC clients in the existing Keycloak realm via KeycloakClient CRs
+ocp4_workload_trusted_profile_analyzer_create_keycloak_clients: true
+# Configure client scopes + assign roles in the existing Keycloak realm
+ocp4_workload_trusted_profile_analyzer_configure_keycloak_realm: true
+# Label used by KeycloakRealm / KeycloakClient realmSelector.
+# Must match KeycloakRealm metadata.labels for the openshift realm CR.
+ocp4_workload_trusted_profile_analyzer_keycloak_realm_label: openshift
+
+# In-cluster MinIO (S3) used as RHTPA object storage
+ocp4_workload_trusted_profile_analyzer_minio_root_user: minio
 ocp4_workload_trusted_profile_analyzer_minio_root_password: password
-ocp4_workload_trusted_profile_analyzer_keycloak_admin_password: password
+ocp4_workload_trusted_profile_analyzer_minio_bucket: trustify
+ocp4_workload_trusted_profile_analyzer_minio_pvc_size: 20Gi
+ocp4_workload_trusted_profile_analyzer_minio_service_name: tpa-minio
+
+# In-cluster PostgreSQL used as RHTPA database
 ocp4_workload_trusted_profile_analyzer_postgres_password: password
+# Must be a simple SQL identifier (no hyphens); chart create-db uses unquoted ALTER USER
+ocp4_workload_trusted_profile_analyzer_postgres_tpa_user: trustify
 ocp4_workload_trusted_profile_analyzer_postgres_tpa_password: password
-ocp4_workload_trusted_profile_analyzer_walker_client_secret: 5460cc91-4e20-4edd-881c-b15b169f8a79
-ocp4_workload_trusted_profile_analyzer_testing_user_client_secret: 5460cc91-4e20-4edd-881c-b15b169f8a79
-ocp4_workload_trusted_profile_analyzer_testing_manager_client_secret: 5460cc91-4e20-4edd-881c-b15b169f8a79
-ocp4_workload_trusted_profile_analyzer_guac_password: password
-ocp4_workload_trusted_profile_analyzer_keycloak_realm_admin_password: password
+ocp4_workload_trusted_profile_analyzer_postgres_tpa_database: trustify
+ocp4_workload_trusted_profile_analyzer_postgres_service_name: tpa-postgresql
+ocp4_workload_trusted_profile_analyzer_helm_postgresql_size: 5Gi
 
-ocp4_workload_trusted_profile_analyzer_install_repo_name: trustification
-ocp4_workload_trusted_profile_analyzer_install_repo_branch: v1.0.1
-ocp4_workload_trusted_profile_analyzer_install_repo_url: https://github.com/trustification/trustification.git
 ocp4_workload_trusted_profile_analyzer_helm_chart_repo: https://charts.openshift.io/
-ocp4_workload_trusted_profile_analyzer_helm_chart_version: "0.0.4"
-ocp4_workload_trusted_profile_analyzer_helm_minio_image_tag: 2024.6.26-debian-12-r0
-ocp4_workload_trusted_profile_analyzer_helm_postgresql_size: 20Gi
-ocp4_workload_trusted_profile_analyzer_helm_chart_dependencies:
-- name: bitnami
-  repo: https://charts.bitnami.com/bitnami
+ocp4_workload_trusted_profile_analyzer_helm_chart_name: openshift-helm-charts/redhat-trusted-profile-analyzer
+ocp4_workload_trusted_profile_analyzer_helm_chart_version: "3.1.1"
+ocp4_workload_trusted_profile_analyzer_helm_release_name: tpa
 
-ocp4_workload_trusted_profile_analyzer_kafka_image_registry: docker.io
-ocp4_workload_trusted_profile_analyzer_kafka_image_repository: bitnamilegacy/kafka
-ocp4_workload_trusted_profile_analyzer_kafka_image_tag: 3.6.1-debian-11-r4
+# Lab-sized resources (chart defaults request 8Gi per component)
+ocp4_workload_trusted_profile_analyzer_server_memory_request: 2Gi
+ocp4_workload_trusted_profile_analyzer_server_cpu_request: "500m"
+ocp4_workload_trusted_profile_analyzer_importer_memory_request: 2Gi
+ocp4_workload_trusted_profile_analyzer_importer_cpu_request: "500m"
+ocp4_workload_trusted_profile_analyzer_importer_working_directory_size: 10Gi
 
-ocp4_workload_trusted_profile_analyzer_pgsql_image_registry: docker.io
-ocp4_workload_trusted_profile_analyzer_pgsql_image_repository: bitnamilegacy/postgresql
-ocp4_workload_trusted_profile_analyzer_pgsql_image_tag: 15.4.0-debian-11-r45
-
-ocp4_workload_trusted_profile_analyzer_minio_image_registry: docker.io
-ocp4_workload_trusted_profile_analyzer_minio_image_repository: bitnamilegacy/minio
-ocp4_workload_trusted_profile_analyzer_minio_image_tag: 2024.6.26-debian-12-r0
-
-ocp4_workload_trusted_profile_analyzer_keycloak_image_registry: docker.io
-ocp4_workload_trusted_profile_analyzer_keycloak_image_repository: bitnamilegacy/keycloak
-ocp4_workload_trusted_profile_analyzer_keycloak_image_tag: 23.0.4-debian-11-r0
-
+ocp4_workload_trusted_profile_analyzer_pgsql_image: docker.io/library/postgres:15
+# Bitnami image starts via its own entrypoint; do not pass minio server args.
+ocp4_workload_trusted_profile_analyzer_minio_image: docker.io/bitnamilegacy/minio:2024.6.26-debian-12-r0
 ocp4_workload_trusted_profile_analyzer_minio_client_image: docker.io/bitnamilegacy/minio-client:2024.1.18-debian-11-r1
