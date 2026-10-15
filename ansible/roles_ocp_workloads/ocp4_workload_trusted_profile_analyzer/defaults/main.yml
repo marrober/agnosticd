@@ -43,7 +43,9 @@ ocp4_workload_trusted_profile_analyzer_keycloak_role_admin: tpa-admin
 # RHTPA 3.x OIDC clients (frontend = UI public client, cli = confidential)
 ocp4_workload_trusted_profile_analyzer_oidc_frontend_client_id: frontend
 ocp4_workload_trusted_profile_analyzer_oidc_cli_client_id: cli
-ocp4_workload_trusted_profile_analyzer_cli_client_secret: <to be added at runtime from keycloak>
+# Generated per deployment; override via AgnosticV/extra-vars if you need a fixed value
+ocp4_workload_trusted_profile_analyzer_cli_client_secret: >-
+  {{ lookup('password', '/dev/null chars=ascii_letters,digits length=32') }}
 
 # Create TPA OIDC clients in the existing Keycloak realm via KeycloakClient CRs
 ocp4_workload_trusted_profile_analyzer_create_keycloak_clients: true
@@ -67,7 +69,8 @@ ocp4_workload_trusted_profile_analyzer_postgres_tpa_user: trustify
 ocp4_workload_trusted_profile_analyzer_postgres_tpa_password: password
 ocp4_workload_trusted_profile_analyzer_postgres_tpa_database: trustify
 ocp4_workload_trusted_profile_analyzer_postgres_service_name: tpa-postgresql
-ocp4_workload_trusted_profile_analyzer_helm_postgresql_size: 5Gi
+# CSAF + SBOM imports need significantly more than a lab-sized 5Gi volume
+ocp4_workload_trusted_profile_analyzer_helm_postgresql_size: 25Gi
 
 ocp4_workload_trusted_profile_analyzer_helm_chart_repo: https://charts.openshift.io/
 ocp4_workload_trusted_profile_analyzer_helm_chart_name: openshift-helm-charts/redhat-trusted-profile-analyzer
